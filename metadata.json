@@ -1,0 +1,6 @@
+{
+  "name": "Bhada Saathi",
+  "description": "Official transportation fare guide for Nepal, supporting city and long-distance routes with offline capability.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}

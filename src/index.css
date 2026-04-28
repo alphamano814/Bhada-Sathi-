@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+  
+  --color-natural-bg: #F8F7F2;
+  --color-natural-text: #2C2C2C;
+  --color-natural-primary: #3E5F49;
+  --color-natural-accent: #8C6A5D;
+  --color-natural-sidebar: #F1EFE7;
+  --color-natural-border: #E5E2D9;
+  --color-natural-badge: #E2EAD3;
+}
+
+.card-shadow {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+}
