@@ -61,17 +61,32 @@ export default function App() {
   
   // Stateful Data with LocalStorage Persistence
   const [shortData, setShortData] = useState<Record<string, FareRoute[]>>(() => {
-    const saved = localStorage.getItem('app_short_data');
-    return saved ? JSON.parse(saved) : {};
+    try {
+      const saved = localStorage.getItem('app_short_data');
+      return saved ? JSON.parse(saved) : INITIAL_SHORT_DATA;
+    } catch (e) {
+      console.error("Error parsing short data", e);
+      return INITIAL_SHORT_DATA;
+    }
   });
   const [longData, setLongData] = useState<FareRoute[]>(() => {
-    const saved = localStorage.getItem('app_long_data');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('app_long_data');
+      return saved ? JSON.parse(saved) : INITIAL_LONG_DATA;
+    } catch (e) {
+      console.error("Error parsing long data", e);
+      return INITIAL_LONG_DATA;
+    }
   });
 
   const [updates, setUpdates] = useState<TravelUpdate[]>(() => {
-    const saved = localStorage.getItem('app_travel_updates');
-    return saved ? JSON.parse(saved) : [
+    try {
+      const saved = localStorage.getItem('app_travel_updates');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing updates", e);
+    }
+    return [
       {
         id: '1',
         title: 'Monsoon Alert',
