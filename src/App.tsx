@@ -82,8 +82,16 @@ export default function App() {
     console.log("App: Fetching data from server...");
     
     // Fetch Routes
-    fetch('/api/routes')
-      .then(res => res.json())
+    fetch('api/routes')
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          return res.json();
+        } else {
+          throw new Error("Oops, we haven't got JSON!");
+        }
+      })
       .then(data => {
         if (Array.isArray(data)) {
           console.log(`App: Successfully loaded ${data.length} highway routes from server.`);
@@ -93,31 +101,47 @@ export default function App() {
         }
       })
       .catch(err => {
-        console.error("App: Failed to fetch highway routes:", err);
+        console.warn("App: Falling back to local highway routes:", err);
         setDataLoaded(true);
       });
 
     // Fetch Local Routes
-    fetch('/api/local-routes')
-      .then(res => res.json())
+    fetch('api/local-routes')
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          return res.json();
+        } else {
+          throw new Error("Oops, we haven't got JSON!");
+        }
+      })
       .then(data => {
         if (Array.isArray(data)) {
           console.log(`App: Successfully loaded ${data.length} local routes from server.`);
           setLocalRoutes(data);
         }
       })
-      .catch(err => console.error("App: Failed to fetch local routes:", err));
+      .catch(err => console.warn("App: Local routes API failed, using empty or local bundle."));
 
     // Fetch Updates
-    fetch('/api/updates')
-      .then(res => res.json())
+    fetch('api/updates')
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          return res.json();
+        } else {
+          throw new Error("Oops, we haven't got JSON!");
+        }
+      })
       .then(data => {
         if (Array.isArray(data)) {
           console.log(`App: Successfully loaded ${data.length} updates from server.`);
           setUpdates(data);
         }
       })
-      .catch(err => console.error("App: Failed to fetch updates from server:", err));
+      .catch(err => console.warn("App: Updates failed to fetch (expected on static host)."));
   }, []);
 
   const saveRoutesToServer = async (newRoutes: FareRoute[]) => {
@@ -125,7 +149,7 @@ export default function App() {
     setIsSaving(true);
     setSaveStatus('Saving...');
     try {
-      const response = await fetch('/api/save-routes', {
+      const response = await fetch('api/save-routes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRoutes)
@@ -134,8 +158,9 @@ export default function App() {
       setSaveStatus('Success!');
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
-      console.error("App: Error saving highway routes:", err);
-      setSaveStatus('Failed to save!');
+      console.warn("App: Error saving highway routes (expected on static host):", err);
+      setSaveStatus('Offline Mode');
+      setTimeout(() => setSaveStatus(null), 1000);
     } finally {
       setIsSaving(false);
     }
@@ -146,7 +171,7 @@ export default function App() {
     setIsSaving(true);
     setSaveStatus('Saving...');
     try {
-      const response = await fetch('/api/save-local-routes', {
+      const response = await fetch('api/save-local-routes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newRoutes)
@@ -155,8 +180,9 @@ export default function App() {
       setSaveStatus('Success!');
       setTimeout(() => setSaveStatus(null), 3000);
     } catch (err) {
-      console.error("App: Error saving local routes:", err);
-      setSaveStatus('Failed to save!');
+      console.warn("App: Error saving local routes (expected on static host):", err);
+      setSaveStatus('Offline Mode');
+      setTimeout(() => setSaveStatus(null), 1000);
     } finally {
       setIsSaving(false);
     }
@@ -165,15 +191,13 @@ export default function App() {
   const saveUpdatesToServer = async (newUpdates: TravelUpdate[]) => {
     if (!dataLoaded) return;
     try {
-      const response = await fetch('/api/save-updates', {
+      fetch('api/save-updates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newUpdates)
       });
-      if (!response.ok) throw new Error("Failed to save updates to server");
-      console.log("App: Updates saved to server successfully");
     } catch (err) {
-      console.error("App: Error saving updates:", err);
+      console.warn("App: Error saving updates (expected on static host):", err);
     }
   };
 
