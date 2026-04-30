@@ -47,6 +47,8 @@ import {
   RotateCcw
 } from 'lucide-react';
 import INITIAL_ROUTES from './data/fareRoutes.json';
+import INITIAL_LOCAL_ROUTES from './data/localRoutes.json';
+import INITIAL_UPDATES from './data/updates.json';
 import { TRANSLATIONS, Language } from './i18n';
 import { FareRoute, LocalRoute, AppRoute } from './types';
 import founderImg from './founder.jpg';
@@ -71,11 +73,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   
   const [routes, setRoutes] = useState<FareRoute[]>(INITIAL_ROUTES as FareRoute[]);
-  const [localRoutes, setLocalRoutes] = useState<LocalRoute[]>([]);
+  const [localRoutes, setLocalRoutes] = useState<LocalRoute[]>(INITIAL_LOCAL_ROUTES as LocalRoute[]);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
-  const [updates, setUpdates] = useState<TravelUpdate[]>([]);
+  const [updates, setUpdates] = useState<TravelUpdate[]>(INITIAL_UPDATES as TravelUpdate[]);
 
   // Fetch routes and updates from server on mount
   useEffect(() => {
