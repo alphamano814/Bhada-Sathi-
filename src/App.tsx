@@ -5,7 +5,6 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import Papa from 'papaparse';
 import { 
   Bus, 
   MapPin, 
@@ -23,6 +22,7 @@ import {
   LayoutDashboard,
   TrendingUp,
   X,
+  Check,
   Home,
   Upload,
   RefreshCw,
@@ -35,14 +35,23 @@ import {
   Users,
   Map as MapIcon,
   Compass,
-  Navigation
+  Navigation,
+  ChevronRight,
+  Fingerprint,
+  Heart,
+  ShieldCheck,
+  Bug,
+  Share2,
+  Star,
+  Facebook,
+  RotateCcw
 } from 'lucide-react';
-import { FareService } from './services/fareService';
-import { SHORT_DISTANCE_DATA as INITIAL_SHORT_DATA, LONG_DISTANCE_DATA as INITIAL_LONG_DATA, CITIES } from './data/fareData';
+import INITIAL_ROUTES from './data/fareRoutes.json';
 import { TRANSLATIONS, Language } from './i18n';
-import { FareRoute, LongDistanceFare } from './types';
+import { FareRoute, LocalRoute, AppRoute } from './types';
+import founderImg from './founder.jpg';
 
-type Screen = 'HOME' | 'SHORT_CITY_LIST' | 'SHORT_ROUTES' | 'LONG_DISTANCE' | 'LOGIN' | 'ADMIN' | 'INFO' | 'ALL_UPDATES' | 'MAP';
+type Screen = 'HOME' | 'LONG_DISTANCE' | 'LOCAL_DISTANCE' | 'LOGIN' | 'ADMIN' | 'INFO' | 'ALL_UPDATES' | 'MAP';
 type AdminTab = 'OVERVIEW' | 'UPDATES' | 'LOCAL' | 'HIGHWAY' | 'TOOLS';
 
 interface TravelUpdate {
@@ -57,66 +66,136 @@ export default function App() {
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [longFrom, setLongFrom] = useState<string>('');
   const [longTo, setLongTo] = useState<string>('');
+  const [localFrom, setLocalFrom] = useState<string>('');
+  const [localTo, setLocalTo] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Stateful Data with LocalStorage Persistence
-  const [shortData, setShortData] = useState<Record<string, FareRoute[]>>(() => {
-    try {
-      const saved = localStorage.getItem('app_short_data');
-      return saved ? JSON.parse(saved) : INITIAL_SHORT_DATA;
-    } catch (e) {
-      console.error("Error parsing short data", e);
-      return INITIAL_SHORT_DATA;
-    }
-  });
-  const [longData, setLongData] = useState<FareRoute[]>(() => {
-    try {
-      const saved = localStorage.getItem('app_long_data');
-      return saved ? JSON.parse(saved) : INITIAL_LONG_DATA;
-    } catch (e) {
-      console.error("Error parsing long data", e);
-      return INITIAL_LONG_DATA;
-    }
-  });
+  const [routes, setRoutes] = useState<FareRoute[]>(INITIAL_ROUTES as FareRoute[]);
+  const [localRoutes, setLocalRoutes] = useState<LocalRoute[]>([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [updates, setUpdates] = useState<TravelUpdate[]>([]);
 
-  const [updates, setUpdates] = useState<TravelUpdate[]>(() => {
-    try {
-      const saved = localStorage.getItem('app_travel_updates');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error parsing updates", e);
-    }
-    return [
-      {
-        id: '1',
-        title: 'Monsoon Alert',
-        content: 'Travelers are advised to check road conditions before heading to hilly regions due to heavy rains.',
-        timestamp: Date.now()
-      },
-      {
-        id: '2',
-        title: 'Fare Revision',
-        content: 'New fare rates for local routes in Kathmandu valley are effective from today.',
-        timestamp: Date.now() - 86400000
-      }
-    ];
-  });
-
-  // Persist to localStorage
+  // Fetch routes and updates from server on mount
   useEffect(() => {
-    localStorage.setItem('app_short_data', JSON.stringify(shortData));
-  }, [shortData]);
+    console.log("App: Fetching data from server...");
+    
+    // Fetch Routes
+    fetch('/api/routes')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          console.log(`App: Successfully loaded ${data.length} highway routes from server.`);
+          setRoutes(data);
+          setJsonText(JSON.stringify(data, null, 2));
+          setDataLoaded(true);
+        }
+      })
+      .catch(err => {
+        console.error("App: Failed to fetch highway routes:", err);
+        setDataLoaded(true);
+      });
 
+    // Fetch Local Routes
+    fetch('/api/local-routes')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          console.log(`App: Successfully loaded ${data.length} local routes from server.`);
+          setLocalRoutes(data);
+        }
+      })
+      .catch(err => console.error("App: Failed to fetch local routes:", err));
+
+    // Fetch Updates
+    fetch('/api/updates')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          console.log(`App: Successfully loaded ${data.length} updates from server.`);
+          setUpdates(data);
+        }
+      })
+      .catch(err => console.error("App: Failed to fetch updates from server:", err));
+  }, []);
+
+  const saveRoutesToServer = async (newRoutes: FareRoute[]) => {
+    if (!dataLoaded) return;
+    setIsSaving(true);
+    setSaveStatus('Saving...');
+    try {
+      const response = await fetch('/api/save-routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRoutes)
+      });
+      if (!response.ok) throw new Error("Failed to save highway routes");
+      setSaveStatus('Success!');
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (err) {
+      console.error("App: Error saving highway routes:", err);
+      setSaveStatus('Failed to save!');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveLocalRoutesToServer = async (newRoutes: LocalRoute[]) => {
+    if (!dataLoaded) return;
+    setIsSaving(true);
+    setSaveStatus('Saving...');
+    try {
+      const response = await fetch('/api/save-local-routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRoutes)
+      });
+      if (!response.ok) throw new Error("Failed to save local routes");
+      setSaveStatus('Success!');
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch (err) {
+      console.error("App: Error saving local routes:", err);
+      setSaveStatus('Failed to save!');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveUpdatesToServer = async (newUpdates: TravelUpdate[]) => {
+    if (!dataLoaded) return;
+    try {
+      const response = await fetch('/api/save-updates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUpdates)
+      });
+      if (!response.ok) throw new Error("Failed to save updates to server");
+      console.log("App: Updates saved to server successfully");
+    } catch (err) {
+      console.error("App: Error saving updates:", err);
+    }
+  };
+
+  // Persist routes
   useEffect(() => {
-    localStorage.setItem('app_long_data', JSON.stringify(longData));
-  }, [longData]);
+    if (!dataLoaded) return; 
+    saveRoutesToServer(routes);
+  }, [routes, dataLoaded]);
 
+  // Persist local routes
   useEffect(() => {
-    localStorage.setItem('app_travel_updates', JSON.stringify(updates));
-  }, [updates]);
+    if (!dataLoaded) return;
+    saveLocalRoutesToServer(localRoutes);
+  }, [localRoutes, dataLoaded]);
 
-  const fileInputRefShort = useRef<HTMLInputElement>(null);
-  const fileInputRefLong = useRef<HTMLInputElement>(null);
+  // Persist updates
+  useEffect(() => {
+    if (!dataLoaded) return;
+    saveUpdatesToServer(updates);
+  }, [updates, dataLoaded]);
+
+  const jsonInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
@@ -145,22 +224,23 @@ export default function App() {
     }
   }, [isLocating]);
 
-  // Admin Form States
-  const [newCityName, setNewCityName] = useState('');
-  const [newShortCity, setNewShortCity] = useState('');
-  const [newShortFrom, setNewShortFrom] = useState('');
-  const [newShortTo, setNewShortTo] = useState('');
-  const [newShortFare, setNewShortFare] = useState('');
-  const [newShortOperator, setNewShortOperator] = useState('');
-  const [newShortVehicleType, setNewShortVehicleType] = useState('');
-  const [newShortServiceType, setNewShortServiceType] = useState<'Normal' | 'Delux' | 'AC'>('Normal');
+  const [newRoute, setNewRoute] = useState<FareRoute>({
+    from: '',
+    to: '',
+    fares: { normal: 0, ac: 0, deluxe: 0 },
+    suggestedYatayat: '',
+    vehicleType: 'Bus'
+  });
 
-  const [newLongFrom, setNewLongFrom] = useState('');
-  const [newLongTo, setNewLongTo] = useState('');
-  const [newLongFare, setNewLongFare] = useState('');
-  const [newLongOperator, setNewLongOperator] = useState('');
-  const [newLongVehicleType, setNewLongVehicleType] = useState('');
-  const [newLongServiceType, setNewLongServiceType] = useState<'Normal' | 'Delux' | 'AC'>('Normal');
+  const [newLocalRoute, setNewLocalRoute] = useState<LocalRoute>({
+    from: '',
+    to: '',
+    fare: 0,
+    suggestedYatayat: '',
+    vehicleType: 'Bus'
+  });
+
+  const [jsonText, setJsonText] = useState(() => JSON.stringify(routes, null, 2));
 
   const [newUpdateTitle, setNewUpdateTitle] = useState('');
   const [newUpdateContent, setNewUpdateContent] = useState('');
@@ -168,8 +248,10 @@ export default function App() {
   const [homeSearchFrom, setHomeSearchFrom] = useState('');
   const [homeSearchTo, setHomeSearchTo] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState<'FROM' | 'TO' | null>(null);
 
   const [editingRoute, setEditingRoute] = useState<{type: 'short' | 'long', city?: string, index: number} | null>(null);
+  const [selectedLongRoutes, setSelectedLongRoutes] = useState<number[]>([]);
 
   const [lang, setLang] = useState<Language>(() => {
     const saved = localStorage.getItem('app_lang');
@@ -180,33 +262,60 @@ export default function App() {
     localStorage.setItem('app_lang', lang);
   }, [lang]);
 
+  const handleJsonUpdate = () => {
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (Array.isArray(parsed)) {
+        setRoutes(parsed);
+        alert("System data updated successfully!");
+      } else {
+        alert("Invalid format: Root must be an array of routes.");
+      }
+    } catch (e) {
+      alert("Invalid JSON: " + (e as Error).message);
+    }
+  };
+
+  const exportData = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(routes, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href",     dataStr);
+    downloadAnchorNode.setAttribute("download", "bhada_saathi_routes_backup.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
+  const exportUpdates = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(updates, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href",     dataStr);
+    downloadAnchorNode.setAttribute("download", "bhada_saathi_updates_backup.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
   const handleHomeSearchNavigation = () => {
     if (searchResults.length === 0) {
+      // Check local search results too
+      if (localSearchResults.length > 0) {
+        setLocalFrom(localSearchResults[0].from);
+        setLocalTo(localSearchResults[0].to);
+        setCurrentScreen('LOCAL_DISTANCE');
+        setHomeSearchFrom('');
+        setHomeSearchTo('');
+        setShowSearchResults(false);
+        return;
+      }
       alert("No direct routes found for this search. Try different keywords.");
       return;
     }
 
-    const firstResult = searchResults[0];
-    if (firstResult.type === 'Highway') {
-      // Use the names the user typed if they are valid endpoints of the found route
-      const typedFrom = allAvailablePlaces.find(p => p.toLowerCase() === homeSearchFrom.toLowerCase());
-      const typedTo = allAvailablePlaces.find(p => p.toLowerCase() === homeSearchTo.toLowerCase());
-
-      if (typedFrom && typedTo) {
-        setLongFrom(typedFrom);
-        setLongTo(typedTo);
-      } else {
-        setLongFrom(firstResult.from);
-        setLongTo(firstResult.to);
-      }
-      setCurrentScreen('LONG_DISTANCE');
-    } else {
-      setSelectedCity(firstResult.city || null);
-      setSearchQuery(`${homeSearchFrom} ${homeSearchTo}`);
-      setCurrentScreen('SHORT_ROUTES');
-    }
+    setLongFrom(searchResults[0].from);
+    setLongTo(searchResults[0].to);
+    setCurrentScreen('LONG_DISTANCE');
     
-    // Clear home search so it doesn't clutter next return
     setHomeSearchFrom('');
     setHomeSearchTo('');
     setShowSearchResults(false);
@@ -217,19 +326,16 @@ export default function App() {
   // Logic for Home Search and Autocomplete
   const allAvailablePlaces = useMemo(() => {
     const places = new Set<string>();
-    Object.keys(shortData).forEach(city => places.add(city));
-    Object.values(shortData).forEach(routes => {
-      (routes as FareRoute[]).forEach(r => {
-        places.add(r.from);
-        places.add(r.to);
-      });
+    routes.forEach(r => {
+      places.add(r.from);
+      places.add(r.to);
     });
-    longData.forEach(r => {
+    localRoutes.forEach(r => {
       places.add(r.from);
       places.add(r.to);
     });
     return Array.from(places).sort();
-  }, [shortData, longData]);
+  }, [routes, localRoutes]);
 
   const fromSuggestions = useMemo(() => {
     if (!homeSearchFrom || homeSearchFrom.length < 1) return [];
@@ -250,60 +356,42 @@ export default function App() {
   const searchResults = useMemo(() => {
     if (!homeSearchFrom && !homeSearchTo) return [];
     
-    const results: (FareRoute & { type: 'Local' | 'Highway', city?: string })[] = [];
     const searchFrom = homeSearchFrom.toLowerCase();
     const searchTo = homeSearchTo.toLowerCase();
     
-    // Search in Local Data
-    Object.entries(shortData).forEach(([city, routes]) => {
-      (routes as FareRoute[]).forEach(r => {
-        const fromMatch = !searchFrom || r.from.toLowerCase().includes(searchFrom);
-        const toMatch = !searchTo || r.to.toLowerCase().includes(searchTo);
-        const reverseFromMatch = !searchFrom || r.to.toLowerCase().includes(searchFrom);
-        const reverseToMatch = !searchTo || r.from.toLowerCase().includes(searchTo);
-
-        if ((fromMatch && toMatch) || (reverseFromMatch && reverseToMatch)) {
-          results.push({ ...r, type: 'Local', city });
-        }
-      });
-    });
-    
-    // Search in Highway Data
-    longData.forEach(r => {
+    return routes.filter(r => {
       const fromMatch = !searchFrom || r.from.toLowerCase().includes(searchFrom);
       const toMatch = !searchTo || r.to.toLowerCase().includes(searchTo);
       const reverseFromMatch = !searchFrom || r.to.toLowerCase().includes(searchFrom);
       const reverseToMatch = !searchTo || r.from.toLowerCase().includes(searchTo);
 
-      if ((fromMatch && toMatch) || (reverseFromMatch && reverseToMatch)) {
-        results.push({ ...r, type: 'Highway' });
-      }
+      return (fromMatch && toMatch) || (reverseFromMatch && reverseToMatch);
     });
-    
-    return results;
-  }, [homeSearchFrom, homeSearchTo, shortData, longData]);
+  }, [homeSearchFrom, homeSearchTo, routes]);
 
-  // Suggested Routes with Operators
+  const localSearchResults = useMemo(() => {
+    if (!homeSearchFrom && !homeSearchTo) return [];
+    
+    const searchFrom = homeSearchFrom.toLowerCase();
+    const searchTo = homeSearchTo.toLowerCase();
+    
+    return localRoutes.filter(r => {
+      const fromMatch = !searchFrom || r.from.toLowerCase().includes(searchFrom);
+      const toMatch = !searchTo || r.to.toLowerCase().includes(searchTo);
+      const reverseFromMatch = !searchFrom || r.to.toLowerCase().includes(searchFrom);
+      const reverseToMatch = !searchTo || r.from.toLowerCase().includes(searchTo);
+
+      return (fromMatch && toMatch) || (reverseFromMatch && reverseToMatch);
+    });
+  }, [homeSearchFrom, homeSearchTo, localRoutes]);
+
+  // Suggested Routes
   const suggestedRoutes = useMemo(() => {
-    const list: (FareRoute & { type: 'Local' | 'Highway', city?: string })[] = [];
-    
-    Object.entries(shortData).forEach(([city, routes]) => {
-      (routes as FareRoute[]).forEach(r => {
-        if (r.operator) list.push({ ...r, type: 'Local', city });
-      });
-    });
-    
-    longData.forEach(r => {
-      if (r.operator) list.push({ ...r, type: 'Highway' });
-    });
-    
-    return list.slice(0, 5); // Just show top 5 suggested
-  }, [shortData, longData]);
+    return routes.filter(r => r.suggestedYatayat).slice(0, 5);
+  }, [routes]);
 
-  // Logic for Short Distance filtering using state data
+  // Logic for filtering
   const filteredRoutes = useMemo(() => {
-    if (!selectedCity) return [];
-    const routes = shortData[selectedCity] || [];
     if (!searchQuery) return routes;
     const queries = searchQuery.toLowerCase().split(/\s+/).filter(q => q.length > 0);
     return routes.filter(r => 
@@ -311,25 +399,31 @@ export default function App() {
         r.from.toLowerCase().includes(q) || 
         r.to.toLowerCase().includes(q) ||
         (r.vehicleType && r.vehicleType.toLowerCase().includes(q)) ||
-        (r.serviceType && r.serviceType.toLowerCase().includes(q))
+        (r.suggestedYatayat && r.suggestedYatayat.toLowerCase().includes(q))
       )
     );
-  }, [selectedCity, searchQuery, shortData]);
+  }, [routes, searchQuery]);
 
   const longDistanceRoutes = useMemo(() => {
     if (!longFrom || !longTo) return [];
-    return longData.filter(f => 
+    return routes.filter(f => 
       (f.from === longFrom && f.to === longTo) || 
       (f.from === longTo && f.to === longFrom)
     );
-  }, [longFrom, longTo, longData]);
+  }, [longFrom, longTo, routes]);
+
+  const localDistanceRoutes = useMemo(() => {
+    if (!localFrom || !localTo) return [];
+    return localRoutes.filter(f => 
+      (f.from === localFrom && f.to === localTo) || 
+      (f.from === localTo && f.to === localFrom)
+    );
+  }, [localFrom, localTo, localRoutes]);
 
   const hasMultipleOptions = longDistanceRoutes.length > 0;
 
   const navigateBack = () => {
-    if (currentScreen === 'SHORT_ROUTES') {
-      setCurrentScreen('SHORT_CITY_LIST');
-    } else if (currentScreen === 'SHORT_CITY_LIST' || currentScreen === 'LONG_DISTANCE' || currentScreen === 'LOGIN') {
+    if (currentScreen === 'LONG_DISTANCE' || currentScreen === 'LOCAL_DISTANCE' || currentScreen === 'LOGIN') {
       setCurrentScreen('HOME');
     }
   };
@@ -352,76 +446,52 @@ export default function App() {
   };
 
   // Admin Actions
-  const addCity = () => {
-    if (!newCityName || shortData[newCityName]) return;
-    setShortData(prev => ({ ...prev, [newCityName]: [] }));
-    if (!newShortCity) setNewShortCity(newCityName);
-    setNewCityName('');
-  };
-
-  const deleteCity = (city: string) => {
-    setShortData(prev => {
-      const newData = { ...prev };
-      delete newData[city];
-      return newData;
+  const addRoute = () => {
+    if (!newRoute.from || !newRoute.to) return;
+    setRoutes(prev => [...prev, newRoute]);
+    setNewRoute({
+      from: '',
+      to: '',
+      fares: { normal: 0, ac: 0, deluxe: 0 },
+      suggestedYatayat: '',
+      vehicleType: 'Bus'
     });
-    // Clear dependent states
-    if (newShortCity === city) setNewShortCity('');
-    if (newLongFrom === city) setNewLongFrom('');
-    if (newLongTo === city) setNewLongTo('');
+    alert("Route added successfully!");
   };
 
-  const addShortRoute = () => {
-    const targetCity = newShortCity || Object.keys(shortData)[0];
-    if (!targetCity || !newShortFrom || !newShortTo || !newShortFare) return;
-    const newRoute: FareRoute = {
-      from: newShortFrom,
-      to: newShortTo,
-      fare: parseInt(newShortFare),
-      operator: newShortOperator,
-      vehicleType: newShortVehicleType,
-      serviceType: newShortServiceType
-    };
-    setShortData(prev => ({
-      ...prev,
-      [targetCity]: [...(prev[targetCity] || []), newRoute]
-    }));
-    setNewShortFrom('');
-    setNewShortTo('');
-    setNewShortFare('');
-    setNewShortOperator('');
-    setNewShortVehicleType('');
-    setNewShortServiceType('Normal');
+  const [selectedRoutes, setSelectedRoutes] = useState<number[]>([]);
+  
+  const toggleRouteSelection = (idx: number) => {
+    setSelectedRoutes(prev => 
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
   };
 
-  const deleteShortRoute = (city: string, index: number) => {
-    setShortData(prev => ({
-      ...prev,
-      [city]: prev[city].filter((_, i) => i !== index)
-    }));
+  const deleteRoute = (index: number) => {
+    if (window.confirm("Are you sure you want to delete this route?")) {
+      const updated = routes.filter((_, i) => i !== index);
+      setRoutes(updated);
+      setSelectedRoutes(prev => prev.filter(i => i !== index).map(i => i > index ? i - 1 : i));
+    }
   };
 
-  const addLongRoute = () => {
-    if (!newLongFrom || !newLongTo || !newLongFare) return;
-    setLongData(prev => [...prev, { 
-      from: newLongFrom, 
-      to: newLongTo, 
-      fare: parseInt(newLongFare), 
-      operator: newLongOperator,
-      vehicleType: newLongVehicleType,
-      serviceType: newLongServiceType
-    }]);
-    setNewLongFrom('');
-    setNewLongTo('');
-    setNewLongFare('');
-    setNewLongOperator('');
-    setNewLongVehicleType('');
-    setNewLongServiceType('Normal');
-  };
+  const allCities = useMemo(() => {
+    const citiesSet = new Set<string>();
+    routes.forEach(route => {
+      if (route.from) citiesSet.add(route.from);
+      if (route.to) citiesSet.add(route.to);
+    });
+    return Array.from(citiesSet).sort();
+  }, [routes]);
 
-  const deleteLongRoute = (index: number) => {
-    setLongData(prev => prev.filter((_, i) => i !== index));
-  };
+  const allLocalCities = useMemo(() => {
+    const citiesSet = new Set<string>();
+    localRoutes.forEach(route => {
+      if (route.from) citiesSet.add(route.from);
+      if (route.to) citiesSet.add(route.to);
+    });
+    return Array.from(citiesSet).sort();
+  }, [localRoutes]);
 
   const addUpdate = () => {
     if (!newUpdateTitle || !newUpdateContent) return;
@@ -442,69 +512,32 @@ export default function App() {
     alert("Update deleted!");
   };
 
-  const handleCsvUpload = (type: 'short' | 'long', file: File) => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        const data = results.data as any[];
-        
-        if (type === 'short') {
-          const newShort: Record<string, FareRoute[]> = {};
-          data.forEach(row => {
-            const city = row.city;
-            const from = row.from;
-            const to = row.to;
-            const fare = parseInt(row.fare);
-            const operator = row.operator;
-            const vehicleType = row.vehicleType;
-            const serviceType = row.serviceType as any;
-            
-            if (city && from && to && !isNaN(fare)) {
-              if (!newShort[city]) newShort[city] = [];
-              newShort[city].push({ from, to, fare, operator, vehicleType, serviceType });
-            }
-          });
-          if (Object.keys(newShort).length > 0) {
-            setShortData(newShort);
-            alert("Local routes updated successfully from CSV!");
-          }
-        } else {
-          const newLong: LongDistanceFare[] = [];
-          data.forEach(row => {
-            const from = row.from;
-            const to = row.to;
-            const fare = parseInt(row.fare);
-            const operator = row.operator;
-            const vehicleType = row.vehicleType;
-            const serviceType = row.serviceType as any;
-            
-            if (from && to && !isNaN(fare)) {
-              newLong.push({ from, to, fare, operator, vehicleType, serviceType });
-            }
-          });
-          if (newLong.length > 0) {
-            setLongData(newLong);
-            alert("Highway routes updated successfully from CSV!");
-          }
-        }
-      },
-      error: (error) => {
-        console.error("CSV Parse Error:", error);
-        alert("Failed to parse CSV file. Please check the format.");
-      }
-    });
-  };
-
   const resetToDefaults = () => {
     if (window.confirm("This will erase all changes and restore original factory data. Continue?")) {
-      setShortData(INITIAL_SHORT_DATA);
-      setLongData(INITIAL_LONG_DATA);
+      setRoutes(INITIAL_ROUTES as FareRoute[]);
+      alert("System reset to defaults!");
+    }
+  };
+
+  const clearEverything = () => {
+    if (window.confirm("This will PERMANENTLY DELETE all routes and updates. Continue?")) {
+      setRoutes([]);
+      setUpdates([]);
+      alert("System wiped successfully!");
     }
   };
 
   const toggleLanguage = () => {
     setLang(prev => prev === 'EN' ? 'NP' : 'EN');
+  };
+
+  const deleteSelectedRoutes = () => {
+    if (selectedRoutes.length === 0) return;
+    if (window.confirm(`Delete ${selectedRoutes.length} selected routes?`)) {
+      const updated = routes.filter((_, idx) => !selectedRoutes.includes(idx));
+      setRoutes(updated);
+      setSelectedRoutes([]);
+    }
   };
 
   const LanguageSelector = () => (
@@ -527,7 +560,14 @@ export default function App() {
           </div>
           <h1 className="text-lg font-bold text-natural-primary font-serif tracking-tight">Bhada Saathi</h1>
         </div>
-        <LanguageSelector />
+        <div className="flex items-center gap-3">
+          {saveStatus && (
+            <div className={`text-[8px] font-black uppercase px-2 py-1 rounded-full border ${saveStatus === 'Success!' ? 'bg-green-50 border-green-100 text-green-600' : saveStatus === 'Saving...' ? 'bg-blue-50 border-blue-100 text-blue-600 animate-pulse' : 'bg-red-50 border-red-100 text-red-600'}`}>
+              {saveStatus}
+            </div>
+          )}
+          <LanguageSelector />
+        </div>
       </header>
 
       <main className="flex-1 relative overflow-hidden flex flex-col">
@@ -558,21 +598,24 @@ export default function App() {
                           <input 
                             placeholder="From (Origin)" 
                             value={homeSearchFrom}
+                            onFocus={() => setActiveSearchField('FROM')}
                             onChange={(e) => {
                               setHomeSearchFrom(e.target.value);
                               setShowSearchResults(true);
+                              setActiveSearchField('FROM');
                             }}
+                            onBlur={() => setTimeout(() => setActiveSearchField(null), 200)}
                             className="flex-1 bg-transparent text-sm outline-none font-medium"
                           />
                         </div>
-                        {fromSuggestions.length > 0 && showSearchResults && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-natural-border rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-natural-bg">
+                        {fromSuggestions.length > 0 && showSearchResults && activeSearchField === 'FROM' && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-natural-border rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-natural-bg max-h-48 overflow-y-auto">
                             {fromSuggestions.map(p => (
                               <button 
                                 key={p} 
                                 onClick={() => {
                                   setHomeSearchFrom(p);
-                                  // Keep results open for destination
+                                  setActiveSearchField(null);
                                 }}
                                 className="w-full px-4 py-3 text-left text-xs font-bold text-natural-primary hover:bg-natural-sidebar transition-colors flex items-center gap-2"
                               >
@@ -590,20 +633,24 @@ export default function App() {
                           <input 
                             placeholder="To (Destination)" 
                             value={homeSearchTo}
+                            onFocus={() => setActiveSearchField('TO')}
                             onChange={(e) => {
                               setHomeSearchTo(e.target.value);
                               setShowSearchResults(true);
+                              setActiveSearchField('TO');
                             }}
+                            onBlur={() => setTimeout(() => setActiveSearchField(null), 200)}
                             className="flex-1 bg-transparent text-sm outline-none font-medium"
                           />
                         </div>
-                        {toSuggestions.length > 0 && showSearchResults && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-natural-border rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-natural-bg">
+                        {toSuggestions.length > 0 && showSearchResults && activeSearchField === 'TO' && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-natural-border rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-natural-bg max-h-48 overflow-y-auto">
                             {toSuggestions.map(p => (
                               <button 
                                 key={p} 
                                 onClick={() => {
                                   setHomeSearchTo(p);
+                                  setActiveSearchField(null);
                                 }}
                                 className="w-full px-4 py-3 text-left text-xs font-bold text-natural-primary hover:bg-natural-sidebar transition-colors flex items-center gap-2"
                               >
@@ -628,32 +675,34 @@ export default function App() {
                 </div>
 
                 <button
-                  onClick={() => setCurrentScreen('SHORT_CITY_LIST')}
-                  className="group bg-white p-5 rounded-2xl card-shadow border border-natural-border text-left transition-all hover:bg-natural-sidebar"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 bg-natural-badge rounded-xl">
-                      <MapPin className="w-5 h-5 text-natural-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-natural-primary">{t.shortDistance}</h3>
-                      <p className="text-xs text-gray-500">{t.shortDesc}</p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
                   onClick={() => setCurrentScreen('LONG_DISTANCE')}
                   className="group bg-white p-5 rounded-2xl card-shadow border border-natural-border text-left transition-all hover:bg-natural-sidebar"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-[#F1EFE7] rounded-xl">
-                      <ArrowRightLeft className="w-5 h-5 text-natural-accent" />
+                    <div className="p-3 bg-natural-badge rounded-xl">
+                      <Bus className="w-5 h-5 text-natural-primary" />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-lg text-natural-primary">{t.longDistance}</h3>
-                      <p className="text-xs text-gray-500">{t.longDesc}</p>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-lg text-natural-primary">Highway Routes</h3>
+                      <p className="text-xs text-gray-500">Check official fares for all highway routes.</p>
                     </div>
+                    <ChevronRight className="w-5 h-5 text-gray-300" />
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => setCurrentScreen('LOCAL_DISTANCE')}
+                  className="group bg-white p-5 rounded-2xl card-shadow border border-natural-border text-left transition-all hover:bg-natural-sidebar"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-50 rounded-xl">
+                      <Navigation className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-lg text-blue-800">Local Routes</h3>
+                      <p className="text-xs text-gray-500">Check fares for short distance / city travel.</p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-gray-300" />
                   </div>
                 </button>
               </div>
@@ -806,103 +855,170 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="flex-1 p-6 overflow-y-auto pb-24"
+              className="flex-1 bg-natural-bg flex flex-col overflow-hidden"
             >
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-natural-sidebar rounded-3xl flex items-center justify-center mx-auto mb-4 border border-natural-border shadow-sm">
-                  <Info className="w-8 h-8 text-natural-accent" />
-                </div>
-                <h2 className="text-2xl font-bold text-natural-primary font-serif">Information Center</h2>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">Version 2.4.0 • Updated Weekly</p>
+              {/* Header */}
+              <div className="shrink-0 p-6 pt-10">
+                <h2 className="text-2xl font-bold text-natural-primary">About</h2>
               </div>
-              
-              <div className="space-y-8">
-                {/* About Us */}
-                <section>
-                  <div className="flex items-center gap-2 mb-4 px-2">
-                    <Users className="w-4 h-4 text-natural-accent" />
-                    <h3 className="text-sm font-bold text-natural-primary uppercase tracking-widest">About Us</h3>
-                  </div>
-                  <div className="bg-white p-6 rounded-[2rem] border border-natural-border card-shadow">
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      We are dedicated to providing the most accurate and up-to-date transportation fare information for Nepal. Our mission is to ensure transparency in travel costs and empower passengers with real-time updates.
-                    </p>
-                  </div>
-                </section>
 
-                {/* Feedback */}
-                <section>
-                  <div className="flex items-center gap-2 mb-4 px-2">
-                    <MessageCircle className="w-4 h-4 text-natural-accent" />
-                    <h3 className="text-sm font-bold text-natural-primary uppercase tracking-widest">Give Feedback</h3>
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto px-6 pb-24 space-y-8">
+                {/* Profile Header */}
+                <div className="flex items-center justify-between group cursor-pointer" onClick={() => isAdmin ? setCurrentScreen('ADMIN') : setCurrentScreen('LOGIN')}>
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-full border-2 border-natural-border overflow-hidden bg-white shadow-sm">
+                      <img 
+                        src={founderImg} 
+                        alt="Profile" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-natural-primary">Prabin Pokhrel</h3>
+                      <p className="text-gray-500 text-sm">Developer & UI/UX Designer</p>
+                    </div>
                   </div>
-                  <div className="bg-white p-6 rounded-[2rem] border border-natural-border card-shadow space-y-4">
-                    <p className="text-sm text-gray-600">Found an incorrect fare? Have a suggestion? We'd love to hear from you.</p>
-                    <a 
-                      href="mailto:support@farecalculator.np"
-                      className="flex items-center justify-center gap-3 w-full py-4 bg-natural-bg border border-natural-border rounded-2xl text-natural-primary font-bold hover:bg-natural-sidebar transition-all"
-                    >
-                      <Mail className="w-5 h-5" />
-                      Email Feedback
+                  <ChevronRight className="w-5 h-5 text-gray-300" />
+                </div>
+
+                {/* Section: General */}
+                <div>
+                  <h4 className="text-gray-400 font-black uppercase tracking-[0.2em] mb-4 text-[10px] mt-4">General</h4>
+                  <div className="space-y-6">
+                    <button onClick={resetToDefaults} className="w-full flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shadow-sm">
+                          <RotateCcw className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-natural-primary font-bold">Erase Everything</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
+                    </button>
+
+                    <button className="w-full flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-rose-500 flex items-center justify-center shadow-sm">
+                          <Heart className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-natural-primary font-bold">Donate to Developer</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Section: Community */}
+                <div>
+                  <h4 className="text-gray-400 font-black uppercase tracking-[0.2em] mb-4 text-[10px]">Community</h4>
+                  <div className="space-y-6">
+                    <a href="https://www.facebook.com/bhadasaathi" target="_blank" rel="noreferrer" className="w-full flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-[#1877F2] flex items-center justify-center shadow-sm">
+                          <Facebook className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-natural-primary font-bold">Facebook Page</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
+                    </a>
+
+                    <a href="https://chat.whatsapp.com/your-group-id" target="_blank" rel="noreferrer" className="w-full flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-[#25D366] flex items-center justify-center shadow-sm">
+                          <MessageCircle className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-natural-primary font-bold">WhatsApp Group</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
                     </a>
                   </div>
-                </section>
+                </div>
 
-                {/* Useful Contacts/Links */}
-                <section>
-                  <div className="flex items-center gap-2 mb-4 px-2">
-                    <ExternalLink className="w-4 h-4 text-natural-accent" />
-                    <h3 className="text-sm font-bold text-natural-primary uppercase tracking-widest">Useful Sections</h3>
-                  </div>
-                  <div className="grid gap-3">
-                    {[
-                      { label: 'Traffic Police Hotline', value: '103', icon: Phone },
-                      { label: 'DoTM Official Portal', value: 'dotm.gov.np', icon: ExternalLink },
-                      { label: 'Emergency Help', value: '100', icon: Bell }
-                    ].map((link, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-4 bg-white border border-natural-border rounded-2xl card-shadow">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-natural-bg rounded-lg">
-                            <link.icon className="w-4 h-4 text-natural-accent" />
-                          </div>
-                          <span className="text-sm font-bold text-natural-primary">{link.label}</span>
+                {/* Section: Application */}
+                <div>
+                  <h4 className="text-gray-400 font-black uppercase tracking-[0.2em] mb-4 text-[10px]">Application</h4>
+                  <div className="space-y-6">
+                    <button 
+                      onClick={() => window.open('https://bhadasaathi.com/privacy', '_blank')}
+                      className="w-full flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-natural-primary flex items-center justify-center shadow-sm">
+                          <ShieldCheck className="w-5 h-5 text-white" />
                         </div>
-                        <span className="text-xs font-bold text-natural-accent bg-natural-sidebar px-3 py-1 rounded-full">{link.value}</span>
+                        <span className="text-natural-primary font-bold">Privacy Policy</span>
                       </div>
-                    ))}
-                  </div>
-                </section>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
+                    </button>
 
-                {/* Admin Access Section */}
-                <section className="pt-6 border-t border-natural-border">
-                  <div className="flex items-center gap-2 mb-4 px-2">
-                    <Lock className="w-4 h-4 text-natural-accent" />
-                    <h3 className="text-sm font-bold text-natural-primary uppercase tracking-widest">Admin Dashboard</h3>
-                  </div>
-                  <div className="bg-white p-6 rounded-[2rem] border border-natural-border card-shadow flex flex-col gap-4">
-                    <p className="text-xs text-gray-500 italic">Secure data management for fares, cities, and notifications. Authorized personnel only.</p>
-                    {isAdmin ? (
-                      <button 
-                        onClick={() => setCurrentScreen('ADMIN')}
-                        className="flex items-center justify-center gap-3 w-full py-4 bg-natural-primary text-white font-bold rounded-2xl shadow-lg shadow-natural-primary/20 active:scale-95 transition-all"
-                      >
-                        <LayoutDashboard className="w-5 h-5" />
-                        Enter Dashboard
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => setCurrentScreen('LOGIN')}
-                        className="flex items-center justify-center gap-3 w-full py-4 border-2 border-natural-primary text-natural-primary font-bold rounded-2xl hover:bg-natural-sidebar active:scale-95 transition-all"
-                      >
-                        <Lock className="w-5 h-5" />
-                        Admin Portal Login
+                    <button 
+                      onClick={() => window.location.href = 'mailto:support@bhadasaathi.com?subject=Report/Request'}
+                      className="w-full flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center shadow-sm">
+                          <Bug className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-natural-primary font-bold">Report or Request</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
+                    </button>
+
+                    <button 
+                      onClick={async () => {
+                        if (navigator.share) {
+                          try {
+                            await navigator.share({
+                              title: 'Bhada Saathi',
+                              text: 'Check out the most accurate transport fare calculator for Nepal!',
+                              url: window.location.href
+                            });
+                          } catch (e) {
+                            console.error('Share failed', e);
+                          }
+                        } else {
+                          alert('Sharing is not supported on this browser. Copy link: ' + window.location.href);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-violet-500 flex items-center justify-center shadow-sm">
+                          <Share2 className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-natural-primary font-bold">Share App</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
+                    </button>
+
+                    <button 
+                      onClick={() => window.open('https://play.google.com/store/apps/details?id=com.bhadasaathi', '_blank')}
+                      className="w-full flex items-center justify-between group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center shadow-sm">
+                          <Star className="w-5 h-5 text-white" />
+                        </div>
+                        <span className="text-natural-primary font-bold">Rate App</span>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
+                    </button>
+                    {!isAdmin && (
+                      <button onClick={() => setCurrentScreen('LOGIN')} className="w-full flex items-center justify-between group">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-full bg-natural-sidebar flex items-center justify-center shadow-sm border border-natural-border">
+                            <Lock className="w-5 h-5 text-natural-primary" />
+                          </div>
+                          <span className="text-natural-primary font-bold">Admin Portal</span>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-gray-200 group-hover:text-natural-primary transition-colors" />
                       </button>
                     )}
                   </div>
-                </section>
+                </div>
 
-                <div className="pt-4 text-center">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.2em]">Crafted for Himalayan Travelers</p>
+                <div className="text-center pt-8 opacity-40">
+                  <p className="text-[10px] text-natural-primary font-black uppercase tracking-[0.4em]">Bhada Saathi • Version 2.5.0</p>
                 </div>
               </div>
             </motion.div>
@@ -994,8 +1110,8 @@ export default function App() {
               {[
                 { id: 'OVERVIEW', label: 'Overview', icon: LayoutDashboard },
                 { id: 'UPDATES', label: 'Updates', icon: Bell },
+                { id: 'HIGHWAY', label: 'Highway', icon: Bus },
                 { id: 'LOCAL', label: 'Local', icon: MapPin },
-                { id: 'HIGHWAY', label: 'Highway', icon: ArrowRightLeft },
                 { id: 'TOOLS', label: 'Tools', icon: RefreshCw },
               ].map((tab) => (
                 <button
@@ -1018,21 +1134,19 @@ export default function App() {
               {adminTab === 'OVERVIEW' && (
                 <div className="p-6 space-y-6">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white p-5 rounded-3xl border border-natural-border card-shadow flex flex-col justify-between h-32">
-                      <div className="flex items-center gap-2 text-natural-accent">
+                    <div className="bg-natural-badge p-5 rounded-3xl border border-natural-border card-shadow flex flex-col justify-between h-32">
+                      <div className="flex items-center gap-2 text-natural-primary">
                         <TrendingUp className="w-4 h-4" />
                         <span className="text-[10px] font-black uppercase tracking-widest">Total Routes</span>
                       </div>
-                      <p className="text-3xl font-bold text-natural-primary">
-                        {(Object.values(shortData) as FareRoute[][]).reduce((acc, curr) => acc + curr.length, 0) + longData.length}
-                      </p>
+                      <p className="text-3xl font-bold text-natural-primary">{routes.length}</p>
                     </div>
-                    <div className="bg-natural-badge p-5 rounded-3xl border border-natural-border card-shadow flex flex-col justify-between h-32">
-                      <div className="flex items-center gap-2 text-natural-primary">
+                    <div className="bg-white p-5 rounded-3xl border border-natural-border card-shadow flex flex-col justify-between h-32">
+                      <div className="flex items-center gap-2 text-natural-accent">
                         <MapPin className="w-4 h-4" />
                         <span className="text-[10px] font-black uppercase tracking-widest">Active Cities</span>
                       </div>
-                      <p className="text-3xl font-bold text-natural-primary">{Object.keys(shortData).length}</p>
+                      <p className="text-3xl font-bold text-natural-primary">{allCities.length}</p>
                     </div>
                   </div>
 
@@ -1048,8 +1162,8 @@ export default function App() {
                       </button>
                       <button onClick={() => setAdminTab('LOCAL')} className="flex items-center justify-between p-4 bg-natural-bg rounded-2xl hover:bg-natural-sidebar transition-all group">
                         <div className="flex items-center gap-3">
-                          <MapPin className="w-4 h-4 text-natural-accent" />
-                          <span className="text-xs font-bold text-natural-primary">Manage local areas</span>
+                          <Bus className="w-4 h-4 text-natural-accent" />
+                          <span className="text-xs font-bold text-natural-primary">Manage all routes</span>
                         </div>
                         <Plus className="w-4 h-4 text-gray-300 group-hover:text-natural-primary" />
                       </button>
@@ -1120,164 +1234,105 @@ export default function App() {
                 </div>
               )}
 
-              {/* --- LOCAL TAB --- */}
-              {adminTab === 'LOCAL' && (
+              {/* --- HIGHWAY ROUTES TAB --- */}
+              {adminTab === 'HIGHWAY' && (
                 <div className="p-6 space-y-8">
                   <section>
                     <div className="flex items-center gap-2 mb-4">
-                      <MapPin className="w-5 h-5 text-natural-primary" />
-                      <h2 className="text-lg font-bold text-natural-primary font-serif">Local Cities</h2>
+                      <Bus className="w-5 h-5 text-natural-accent" />
+                      <h2 className="text-lg font-bold text-natural-primary font-serif">Add Highway Route</h2>
                     </div>
                     <div className="bg-white p-6 rounded-3xl border border-natural-border card-shadow space-y-4">
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-2 gap-3">
                         <input 
-                          placeholder="City Name" 
-                          value={newCityName}
-                          onChange={(e) => setNewCityName(e.target.value)}
-                          className="flex-1 p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none focus:border-natural-primary"
+                          placeholder="Origin" 
+                          value={newRoute.from}
+                          onChange={(e) => setNewRoute({...newRoute, from: e.target.value})}
+                          className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm font-bold"
                         />
-                        <button 
-                          onClick={addCity}
-                          className="px-5 bg-natural-primary text-white font-bold rounded-xl active:scale-95 transition-transform"
-                        >
-                          Add
-                        </button>
+                        <input 
+                          placeholder="Destination" 
+                          value={newRoute.to}
+                          onChange={(e) => setNewRoute({...newRoute, to: e.target.value})}
+                          className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm font-bold"
+                        />
                       </div>
-                      {Object.keys(shortData).length > 0 && (
-                        <div className="flex flex-wrap gap-2 pt-2">
-                          {Object.keys(shortData).map(city => (
-                            <div key={city} className="flex items-center gap-2 bg-natural-sidebar px-3 py-2 rounded-xl border border-natural-border">
-                              <span className="text-xs font-bold text-natural-primary">{city}</span>
-                              <button 
-                                onClick={() => deleteCity(city)} 
-                                className="text-red-400 hover:text-red-600 transition-colors"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase text-gray-400 pl-1">Normal</label>
+                          <input 
+                            type="number"
+                            value={newRoute.fares.normal}
+                            onChange={(e) => setNewRoute({...newRoute, fares: {...newRoute.fares, normal: parseInt(e.target.value) || 0}})}
+                            className="w-full p-2 bg-natural-bg border border-natural-border rounded-lg text-xs font-bold"
+                          />
                         </div>
-                      )}
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase text-blue-400 pl-1">AC</label>
+                          <input 
+                            type="number"
+                            value={newRoute.fares.ac}
+                            onChange={(e) => setNewRoute({...newRoute, fares: {...newRoute.fares, ac: parseInt(e.target.value) || 0}})}
+                            className="w-full p-2 bg-natural-bg border border-natural-border rounded-lg text-xs font-bold"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase text-natural-accent pl-1">Deluxe</label>
+                          <input 
+                            type="number"
+                            value={newRoute.fares.deluxe}
+                            onChange={(e) => setNewRoute({...newRoute, fares: {...newRoute.fares, deluxe: parseInt(e.target.value) || 0}})}
+                            className="w-full p-2 bg-natural-bg border border-natural-border rounded-lg text-xs font-bold"
+                          />
+                        </div>
+                      </div>
+                      <input 
+                        placeholder="Transport (e.g. Blue Sky Yatayat)" 
+                        value={newRoute.suggestedYatayat}
+                        onChange={(e) => setNewRoute({...newRoute, suggestedYatayat: e.target.value})}
+                        className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
+                      />
+                      <input 
+                        placeholder="Vehicle (e.g. Sumo, EV, Bus)" 
+                        value={newRoute.vehicleType}
+                        onChange={(e) => setNewRoute({...newRoute, vehicleType: e.target.value})}
+                        className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
+                      />
+                      <button 
+                        onClick={addRoute}
+                        className="w-full py-4 bg-natural-primary text-white font-bold rounded-xl active:scale-95 transition-transform"
+                      >
+                        Add Route
+                      </button>
                     </div>
                   </section>
 
                   <section>
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg font-bold text-natural-primary font-serif">Local Routes</h2>
-                      <button 
-                        onClick={() => {
-                          const modal = document.getElementById('add-route-modal');
-                          if (modal) modal.classList.toggle('hidden');
-                        }}
-                        className="p-2 bg-natural-primary text-white rounded-lg active:scale-95 transition-all shadow-md"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-bold text-natural-primary uppercase tracking-widest pl-2">Highway DB ({routes.length})</h2>
+                      </div>
                     </div>
-
-                    <div id="add-route-modal" className="hidden bg-white p-6 rounded-3xl border border-natural-border card-shadow mb-6 space-y-4">
-                      <select 
-                        value={newShortCity}
-                        onChange={(e) => setNewShortCity(e.target.value)}
-                        className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm font-bold appearance-none cursor-pointer"
-                      >
-                        <option value="">Select City</option>
-                        {Object.keys(shortData).map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <div className="grid grid-cols-2 gap-3">
-                        <input 
-                          placeholder="From" 
-                          value={newShortFrom}
-                          onChange={(e) => setNewShortFrom(e.target.value)}
-                          className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
-                        />
-                        <input 
-                          placeholder="To" 
-                          value={newShortTo}
-                          onChange={(e) => setNewShortTo(e.target.value)}
-                          className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <input 
-                          placeholder="Fare (Rs.)" 
-                          type="number"
-                          value={newShortFare}
-                          onChange={(e) => setNewShortFare(e.target.value)}
-                          className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
-                        />
-                        <input 
-                          placeholder="Transport (e.g. Sajha)" 
-                          value={newShortOperator}
-                          onChange={(e) => setNewShortOperator(e.target.value)}
-                          className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
-                        />
-                      </div>
-                      <input 
-                        placeholder="Vehicle Type (e.g. Bus, EV, Sumo, Hiace)" 
-                        value={newShortVehicleType}
-                        onChange={(e) => setNewShortVehicleType(e.target.value)}
-                        className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
-                      />
-                      <div className="flex gap-2">
-                        {(['Normal', 'Delux', 'AC'] as const).map((type) => (
-                          <button
-                            key={type}
-                            onClick={() => setNewShortServiceType(type)}
-                            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
-                              newShortServiceType === type 
-                                ? 'bg-natural-primary text-white border-natural-primary' 
-                                : 'bg-white text-gray-500 border-natural-border hover:bg-natural-sidebar'
-                            }`}
-                          >
-                            {type}
-                          </button>
-                        ))}
-                      </div>
-                      <button 
-                        onClick={addShortRoute}
-                        disabled={!newShortCity}
-                        className="w-full py-4 bg-natural-primary text-white font-bold rounded-xl active:scale-95 transition-transform disabled:opacity-50"
-                      >
-                        Add Local Route
-                      </button>
-                    </div>
-
-                    <div className="space-y-6">
-                      {Object.entries(shortData).map(([city, routes]) => (
-                        <div key={city} className="space-y-3">
-                          <h3 className="text-[10px] font-black text-natural-accent uppercase tracking-widest pl-2">{city}</h3>
-                          <div className="grid gap-2">
-                            {(routes as FareRoute[]).map((route, idx) => (
-                              <div key={idx} className="bg-white p-4 rounded-xl border border-natural-border flex items-center justify-between group">
-                                <div className="text-xs font-medium text-natural-text">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold">{route.from} ➔ {route.to}</span>
-                                    <span className="text-natural-primary font-bold">Rs. {route.fare}</span>
-                                  </div>
-                                  {route.operator && (
-                                    <div className="text-[10px] text-natural-accent mt-1 flex items-center gap-1">
-                                      <Bus className="w-3 h-3" />
-                                      {route.operator}
-                                    </div>
-                                  )}
-                                  {route.vehicleType && (
-                                    <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1 font-bold">
-                                      Type: {route.vehicleType}
-                                    </div>
-                                  )}
-                                  {route.serviceType && (
-                                    <div className="text-[10px] font-black text-natural-accent mt-0.5 uppercase tracking-tighter">
-                                      Service: {route.serviceType}
-                                    </div>
-                                  )}
-                                </div>
-                                <button onClick={() => deleteShortRoute(city, idx)} className="text-gray-300 hover:text-red-500 transition-colors">
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            ))}
+                    <div className="space-y-3">
+                      {routes.map((route, idx) => (
+                        <div 
+                          key={idx} 
+                          className="p-4 rounded-2xl border transition-all bg-white border-natural-border flex items-center justify-between"
+                        >
+                          <div className="text-xs">
+                            <p className="font-bold text-natural-primary">{route.from} ➔ {route.to}</p>
+                            <div className="flex gap-2 mt-1">
+                              <span className="text-[10px] text-gray-400">N: {route.fares.normal}</span>
+                              <span className="text-[10px] text-blue-400">AC: {route.fares.ac}</span>
+                              <span className="text-[10px] text-natural-accent">D: {route.fares.deluxe}</span>
+                            </div>
                           </div>
+                          <button 
+                            onClick={() => deleteRoute(idx)}
+                            className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -1285,111 +1340,96 @@ export default function App() {
                 </div>
               )}
 
-              {/* --- HIGHWAY TAB --- */}
-              {adminTab === 'HIGHWAY' && (
+              {/* --- LOCAL ROUTES TAB --- */}
+              {adminTab === 'LOCAL' && (
                 <div className="p-6 space-y-8">
                   <section>
                     <div className="flex items-center gap-2 mb-4">
-                      <ArrowRightLeft className="w-5 h-5 text-natural-accent" />
-                      <h2 className="text-lg font-bold text-natural-primary font-serif">Add High-Way Route</h2>
+                      <MapPin className="w-5 h-5 text-blue-600" />
+                      <h2 className="text-lg font-bold text-natural-primary font-serif">Add Local Route</h2>
                     </div>
                     <div className="bg-white p-6 rounded-3xl border border-natural-border card-shadow space-y-4">
                       <div className="grid grid-cols-2 gap-3">
-                        <select 
-                          value={newLongFrom}
-                          onChange={(e) => setNewLongFrom(e.target.value)}
+                        <input 
+                          placeholder="From (Place)" 
+                          value={newLocalRoute.from}
+                          onChange={(e) => setNewLocalRoute({...newLocalRoute, from: e.target.value})}
                           className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm font-bold"
-                        >
-                          <option value="">Origin</option>
-                          {Object.keys(shortData).map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                        <select 
-                          value={newLongTo}
-                          onChange={(e) => setNewLongTo(e.target.value)}
+                        />
+                        <input 
+                          placeholder="To (Place)" 
+                          value={newLocalRoute.to}
+                          onChange={(e) => setNewLocalRoute({...newLocalRoute, to: e.target.value})}
                           className="p-3 bg-natural-bg border border-natural-border rounded-xl text-sm font-bold"
-                        >
-                          <option value="">Destination</option>
-                          {Object.keys(shortData).map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[8px] font-black uppercase text-gray-400 pl-1">Fare (NPR)</label>
+                        <input 
+                          type="number"
+                          value={newLocalRoute.fare}
+                          onChange={(e) => setNewLocalRoute({...newLocalRoute, fare: parseInt(e.target.value) || 0})}
+                          className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm font-bold"
+                        />
                       </div>
                       <input 
-                        placeholder="Inter-city Fare (Rs.)" 
-                        type="number"
-                        value={newLongFare}
-                        onChange={(e) => setNewLongFare(e.target.value)}
+                        placeholder="Suggested (e.g. Local Micro)" 
+                        value={newLocalRoute.suggestedYatayat}
+                        onChange={(e) => setNewLocalRoute({...newLocalRoute, suggestedYatayat: e.target.value})}
                         className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
                       />
                       <input 
-                        placeholder="Transport Pvt. (e.g. Blue Sky Yatayat)" 
-                        value={newLongOperator}
-                        onChange={(e) => setNewLongOperator(e.target.value)}
+                        placeholder="Vehicle (e.g. Mini Bus, Tempo)" 
+                        value={newLocalRoute.vehicleType}
+                        onChange={(e) => setNewLocalRoute({...newLocalRoute, vehicleType: e.target.value})}
                         className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
                       />
-                      <input 
-                        placeholder="Vehicle Type (Sumo, EV, Bus, etc.)" 
-                        value={newLongVehicleType}
-                        onChange={(e) => setNewLongVehicleType(e.target.value)}
-                        className="w-full p-3 bg-natural-bg border border-natural-border rounded-xl text-sm outline-none"
-                      />
-                      <div className="flex gap-2">
-                        {(['Normal', 'Delux', 'AC'] as const).map((type) => (
-                          <button
-                            key={type}
-                            onClick={() => setNewLongServiceType(type)}
-                            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
-                              newLongServiceType === type 
-                                ? 'bg-natural-accent text-white border-natural-accent' 
-                                : 'bg-white text-gray-400 border-natural-border hover:bg-natural-bg'
-                            }`}
-                          >
-                            {type}
-                          </button>
-                        ))}
-                      </div>
                       <button 
-                        onClick={addLongRoute}
-                        className="w-full py-4 bg-natural-accent text-white font-bold rounded-xl active:scale-95 transition-transform"
+                        onClick={() => {
+                          if (!newLocalRoute.from || !newLocalRoute.to) return;
+                          setLocalRoutes(prev => [...prev, newLocalRoute]);
+                          setNewLocalRoute({
+                            from: '',
+                            to: '',
+                            fare: 0,
+                            suggestedYatayat: '',
+                            vehicleType: 'Bus'
+                          });
+                          alert("Local route added!");
+                        }}
+                        className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl active:scale-95 transition-transform"
                       >
-                        Save Highway Route
+                        Add Local Route
                       </button>
                     </div>
                   </section>
 
                   <section>
-                    <h2 className="text-sm font-bold text-natural-primary uppercase tracking-widest mb-4">Registered Routes</h2>
-                    <div className="grid gap-3">
-                      {longData.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic text-center py-10">No highway routes added.</p>
-                      ) : (
-                        longData.map((route, idx) => (
-                          <div key={idx} className="bg-white p-4 rounded-xl border border-natural-border flex items-center justify-between group">
-                            <div className="text-xs font-medium text-natural-text">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold">{route.from} ➔ {route.to}</span>
-                                <span className="text-natural-accent font-bold">Rs. {route.fare}</span>
-                              </div>
-                              {route.operator && (
-                                <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-1 font-bold italic">
-                                  Suggested: {route.operator}
-                                </div>
-                              )}
-                              {route.vehicleType && (
-                                <div className="text-[10px] text-natural-accent mt-0.5 flex items-center gap-1 font-black uppercase tracking-tighter">
-                                  Vehicle: {route.vehicleType}
-                                </div>
-                              )}
-                              {route.serviceType && (
-                                <div className="text-[10px] font-black text-natural-primary mt-1 uppercase tracking-tighter">
-                                  Service: {route.serviceType}
-                                </div>
-                              )}
-                            </div>
-                            <button onClick={() => deleteLongRoute(idx)} className="text-gray-300 hover:text-red-500 transition-colors">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-sm font-bold text-natural-primary uppercase tracking-widest pl-2">Local DB ({localRoutes.length})</h2>
+                    </div>
+                    <div className="space-y-3">
+                      {localRoutes.map((route, idx) => (
+                        <div 
+                          key={idx} 
+                          className="p-4 rounded-2xl border transition-all bg-white border-natural-border flex items-center justify-between"
+                        >
+                          <div className="text-xs">
+                            <p className="font-bold text-natural-primary">{route.from} ➔ {route.to}</p>
+                            <p className="text-sm font-bold text-blue-600 mt-1">Rs. {route.fare}</p>
                           </div>
-                        ))
-                      )}
+                          <button 
+                            onClick={() => {
+                              if (window.confirm("Delete this local route?")) {
+                                setLocalRoutes(prev => prev.filter((_, i) => i !== idx));
+                              }
+                            }}
+                            className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </section>
                 </div>
@@ -1399,63 +1439,78 @@ export default function App() {
               {adminTab === 'TOOLS' && (
                 <div className="p-6 space-y-8">
                   <section>
-                    <div className="flex items-center gap-2 mb-6">
-                      <FileSpreadsheet className="w-5 h-5 text-green-600" />
-                      <h2 className="text-lg font-bold text-natural-primary font-serif">Bulk Operations</h2>
+                    <div className="flex items-center gap-2 mb-4">
+                      <RefreshCw className="w-5 h-5 text-natural-primary" />
+                      <h2 className="text-lg font-bold text-natural-primary font-serif">JSON Data Editor</h2>
                     </div>
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="bg-white p-6 rounded-3xl border border-natural-border card-shadow flex flex-col items-center text-center">
-                        <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center mb-3">
-                          <Upload className="w-6 h-6 text-green-600" />
-                        </div>
-                        <h3 className="font-bold text-natural-primary text-sm mb-1">Upload Local CSV</h3>
-                        <p className="text-[10px] text-gray-400 mb-4 px-4 uppercase tracking-tighter">Cols: city, from, to, fare, operator, vehicleType, serviceType</p>
-                        <input 
-                          type="file" 
-                          ref={fileInputRefShort} 
-                          className="hidden" 
-                          accept=".csv"
-                          onChange={(e) => e.target.files?.[0] && handleCsvUpload('short', e.target.files[0])}
-                        />
+                    <div className="bg-white p-6 rounded-3xl border border-natural-border card-shadow space-y-4">
+                      <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest leading-relaxed">
+                        Directly edit the underlying JSON database. WARNING: Incorrect syntax will cause app failure.
+                      </p>
+                      <textarea 
+                        value={jsonText}
+                        onChange={(e) => setJsonText(e.target.value)}
+                        rows={12}
+                        className="w-full p-4 bg-natural-bg border border-natural-border rounded-xl text-[10px] font-mono outline-none focus:border-natural-primary resize-none"
+                      />
+                      <div className="grid grid-cols-2 gap-3">
                         <button 
-                          onClick={() => fileInputRefShort.current?.click()}
-                          className="w-full py-4 bg-green-600 text-white font-bold rounded-xl active:scale-95 transition-all text-sm"
+                          onClick={handleJsonUpdate}
+                          className="py-4 bg-natural-primary text-white font-bold rounded-xl active:scale-95 transition-transform text-sm"
                         >
-                          Select CSV File
+                          Sync JSON
+                        </button>
+                        <button 
+                          onClick={() => setJsonText(JSON.stringify(routes, null, 2))}
+                          className="py-4 bg-white border border-natural-border text-natural-primary font-bold rounded-xl active:scale-95 transition-transform text-sm"
+                        >
+                          Refresh View
                         </button>
                       </div>
-
-                      <div className="bg-white p-6 rounded-3xl border border-natural-border card-shadow flex flex-col items-center text-center">
-                        <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mb-3">
-                          <Upload className="w-6 h-6 text-blue-600" />
-                        </div>
-                        <h3 className="font-bold text-natural-primary text-sm mb-1">Upload Highway CSV</h3>
-                        <p className="text-[10px] text-gray-400 mb-4 px-4 uppercase tracking-tighter">Cols: from, to, fare, operator, vehicleType, serviceType</p>
-                        <input 
-                          type="file" 
-                          ref={fileInputRefLong} 
-                          className="hidden" 
-                          accept=".csv"
-                          onChange={(e) => e.target.files?.[0] && handleCsvUpload('long', e.target.files[0])}
-                        />
+                      <div className="grid grid-cols-2 gap-3">
                         <button 
-                          onClick={() => fileInputRefLong.current?.click()}
-                          className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl active:scale-95 transition-all text-sm"
+                          onClick={exportData}
+                          className="py-4 bg-natural-sidebar border border-natural-border text-natural-primary font-bold rounded-xl active:scale-95 transition-all text-xs flex items-center justify-center gap-2"
                         >
-                          Select CSV File
+                          <Upload className="w-4 h-4 rotate-180" />
+                          Highway Routes
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(localRoutes, null, 2));
+                            const downloadAnchorNode = document.createElement('a');
+                            downloadAnchorNode.setAttribute("href",     dataStr);
+                            downloadAnchorNode.setAttribute("download", "bhada_saathi_local_routes_backup.json");
+                            document.body.appendChild(downloadAnchorNode);
+                            downloadAnchorNode.click();
+                            downloadAnchorNode.remove();
+                          }}
+                          className="py-4 bg-natural-sidebar border border-natural-border text-natural-primary font-bold rounded-xl active:scale-95 transition-all text-xs flex items-center justify-center gap-2"
+                        >
+                          <Upload className="w-4 h-4 rotate-180" />
+                          Local Routes
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        <button 
+                          onClick={exportUpdates}
+                          className="py-4 bg-natural-sidebar border border-natural-border text-natural-primary font-bold rounded-xl active:scale-95 transition-all text-xs flex items-center justify-center gap-2"
+                        >
+                          <Upload className="w-4 h-4 rotate-180" />
+                          Export Updates
                         </button>
                       </div>
                     </div>
                   </section>
 
-                  <section className="pt-6 border-t border-natural-border">
-                    <button 
-                      onClick={resetToDefaults}
-                      className="w-full py-4 bg-red-50 text-red-600 border border-red-100 font-bold rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm shadow-red-100"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Wipe & Restore Defaults
-                    </button>
+                  <section className="bg-red-50 p-6 rounded-3xl border border-red-100 space-y-4 shadow-sm">
+                    <h3 className="text-red-800 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                       <Trash2 className="w-4 h-4" /> Danger Zone
+                    </h3>
+                    <div className="grid grid-cols-1 gap-2">
+                      <button onClick={resetToDefaults} className="w-full py-3 bg-white border border-red-200 text-red-600 font-bold rounded-xl text-xs">Restore Factory Defaults</button>
+                      <button onClick={clearEverything} className="w-full py-3 bg-red-600 text-white font-bold rounded-xl text-xs">Delete Everything</button>
+                    </div>
                   </section>
                 </div>
               )}
@@ -1465,143 +1520,118 @@ export default function App() {
 
 
         {/* --- SHORT DISTANCE: CITY LIST --- */}
-        {currentScreen === 'SHORT_CITY_LIST' && (
+        {/* --- LOCAL DISTANCE SCREEN --- */}
+        {currentScreen === 'LOCAL_DISTANCE' && (
           <motion.div 
-            key="city-list"
+            key="local-distance"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             className="flex-1 bg-natural-bg overflow-y-auto"
           >
-            <div className="sticky top-0 z-10 bg-natural-bg/90 backdrop-blur-md px-6 py-6 flex items-center gap-4 border-b border-natural-border mb-6">
-              <button 
-                onClick={navigateBack}
-                className="p-2 hover:bg-natural-sidebar rounded-full transition-colors border border-transparent hover:border-natural-border"
-                id="back-button"
-              >
-                <ChevronLeft className="w-6 h-6 text-natural-primary" />
-              </button>
-              <h1 className="text-2xl font-bold text-natural-primary font-serif">{t.selectCity}</h1>
-            </div>
-            
-            <div className="px-6 pb-24">
-              <p className="text-gray-500 text-sm mb-6 font-medium">{t.chooseCityDesc}</p>
-              <div className="grid gap-4">
-                {Object.keys(shortData).length === 0 ? (
-                  <div className="bg-white p-10 rounded-[2rem] border border-dashed border-natural-border text-center">
-                    <MapPin className="w-10 h-10 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-400 text-sm font-medium">No cities added yet.</p>
-                  </div>
-                ) : (
-                  Object.keys(shortData).map(city => (
-                    <button
-                      key={city}
-                      onClick={() => {
-                        setSelectedCity(city);
-                        setCurrentScreen('SHORT_ROUTES');
-                      }}
-                      className="flex items-center justify-between p-5 bg-white rounded-2xl border border-natural-border card-shadow hover:border-natural-primary hover:bg-natural-sidebar/30 transition-all text-left group"
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-bold text-lg text-natural-primary">{city}</span>
-                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{shortData[city].length} Routes</span>
-                      </div>
-                      <ArrowRight className="w-5 h-5 text-natural-border group-hover:text-natural-primary transition-all" />
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* --- SHORT DISTANCE: ROUTES --- */}
-        {currentScreen === 'SHORT_ROUTES' && (
-          <motion.div 
-            key="routes"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="flex-1 flex flex-col h-full bg-natural-bg"
-          >
-            <div className="sticky top-0 z-10 bg-natural-bg/90 backdrop-blur-md px-6 py-6 flex items-center gap-4 border-b border-natural-border mb-6">
+            <div className="sticky top-0 z-10 bg-natural-bg/90 backdrop-blur-md px-6 py-4 flex items-center gap-4 border-b border-natural-border mb-6">
               <button 
                 onClick={navigateBack}
                 className="p-2 hover:bg-natural-sidebar rounded-full transition-colors border border-transparent hover:border-natural-border"
               >
                 <ChevronLeft className="w-6 h-6 text-natural-primary" />
               </button>
-              <h1 className="text-2xl font-bold text-natural-primary font-serif">{selectedCity}</h1>
-            </div>
-            
-            <div className="px-6 mb-6">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input 
-                  type="text"
-                  placeholder={t.searchRoutes}
-                  className="w-full pl-12 pr-4 py-4 bg-white border border-natural-border rounded-2xl text-sm focus:ring-2 focus:ring-natural-primary/20 focus:border-natural-primary outline-none card-shadow transition-all"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
+              <h2 className="text-xl font-bold text-natural-primary font-serif">Local Rates</h2>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 pb-24">
-              {filteredRoutes.length > 0 ? (
-                <div className="grid gap-4">
-                  {filteredRoutes.map((route, idx) => (
-                    <motion.div
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      key={`${route.from}-${route.to}-${idx}`}
-                      className="p-5 bg-white rounded-2xl border border-natural-border card-shadow flex items-center justify-between group"
-                    >
-                      <div className="pr-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-bold text-natural-text">{route.from}</span>
-                          <ArrowRight className="w-3 h-3 text-natural-accent" />
-                          <span className="text-sm font-bold text-natural-text">{route.to}</span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="bg-natural-badge px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest text-natural-primary">{t.localRate}</span>
-                          {route.operator && (
-                            <span className="text-[10px] text-natural-accent font-bold italic">🚌 {route.operator}</span>
-                          )}
-                          {route.vehicleType && (
-                            <span className="text-[9px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded font-black uppercase tracking-tighter">
-                              {route.vehicleType}
-                            </span>
-                          )}
-                          {route.serviceType && (
-                            <span className="text-[9px] px-2 py-0.5 bg-natural-sidebar text-natural-primary rounded font-black uppercase tracking-tighter border border-natural-border">
-                              {route.serviceType}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-2xl font-bold text-natural-primary">{t.rs} {route.fare}</span>
-                      </div>
-                    </motion.div>
-                  ))}
+            <div className="px-8 pb-24">
+              <div className="space-y-6 mb-12 relative">
+                <div className="relative">
+                  <label className="absolute left-5 top-3 text-[10px] uppercase font-black text-blue-400 tracking-[0.2em]">Origin Place</label>
+                  <select 
+                    value={localFrom}
+                    onChange={(e) => setLocalFrom(e.target.value)}
+                    className="w-full pt-8 pb-4 px-5 bg-white border border-natural-border rounded-2xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all appearance-none cursor-pointer card-shadow font-bold text-natural-primary"
+                  >
+                    <option value="">Choose place</option>
+                    {allLocalCities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
-              ) : (
-                <div className="py-24 text-center">
-                  <div className="bg-natural-sidebar w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border border-natural-border">
-                    <Search className="w-8 h-8 text-natural-accent opacity-30" />
+
+                <div className="flex justify-center -my-4 relative z-10">
+                  <div className="bg-blue-600 p-3 rounded-2xl border-4 border-natural-bg shadow-lg text-white">
+                    <Navigation className="w-5 h-5" />
                   </div>
-                  <h3 className="text-natural-primary font-bold text-xl mb-2 font-serif">{t.routeNotFound}</h3>
-                  <p className="text-gray-500 text-sm max-w-[200px] mx-auto">{t.routeNotFoundDesc}</p>
                 </div>
+
+                <div className="relative">
+                  <label className="absolute left-5 top-3 text-[10px] uppercase font-black text-blue-400 tracking-[0.2em]">Destination</label>
+                  <select 
+                    value={localTo}
+                    onChange={(e) => setLocalTo(e.target.value)}
+                    className="w-full pt-8 pb-4 px-5 bg-white border border-natural-border rounded-2xl outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all appearance-none cursor-pointer card-shadow font-bold text-natural-primary"
+                  >
+                    <option value="">Choose place</option>
+                    {allLocalCities.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {localFrom && localTo && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-blue-600 rounded-[2.5rem] p-10 text-center shadow-xl shadow-blue-600/30 relative overflow-hidden group"
+                >
+                  <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none transition-transform group-hover:scale-110 duration-700">
+                    <Navigation className="w-32 h-32 text-white" />
+                  </div>
+                  
+                  {localDistanceRoutes.length > 0 ? (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between px-2">
+                        <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.25em]">Local Transfer</p>
+                        <span className="text-[9px] font-black text-white px-2 py-0.5 bg-white/10 rounded-lg uppercase">Fixed Rate</span>
+                      </div>
+                      
+                      <div className="grid gap-3">
+                        {localDistanceRoutes.map((route, idx) => (
+                          <div 
+                            key={idx} 
+                            className="bg-white rounded-[2rem] p-6 shadow-2xl shadow-black/10 flex flex-col items-center justify-center gap-4 relative group border border-transparent hover:border-blue-100 transition-all text-center"
+                          >
+                            <div className="flex flex-col items-center gap-1">
+                               <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black rounded-md uppercase tracking-widest border border-blue-100">
+                                 {route.vehicleType || 'Local Service'}
+                               </span>
+                               <h4 className="text-xl font-bold text-natural-primary">
+                                 {route.suggestedYatayat || 'Standard Local'}
+                               </h4>
+                            </div>
+                            
+                            <div className="flex flex-col items-center">
+                              <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Base Fare</span>
+                              <div className="text-4xl font-bold text-blue-600 mt-1">
+                                Rs.{route.fare}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="bg-white/10 backdrop-blur-sm p-4 rounded-3xl flex items-center gap-3 justify-center text-xs text-white font-medium border border-white/10 mt-4">
+                        <Info className="w-4 h-4" />
+                        <span>Rates are subject to local authorities.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-6">
+                      <h3 className="text-white font-bold text-xl mb-2 font-serif">Not Listed</h3>
+                      <p className="text-white/60 text-sm">We couldn't find official local rates for this specific stretch.</p>
+                    </div>
+                  )}
+                </motion.div>
               )}
             </div>
           </motion.div>
         )}
 
-        {/* --- LONG DISTANCE SCREEN --- */}
+        {/* --- FARES SEARCH SCREEN --- */}
         {currentScreen === 'LONG_DISTANCE' && (
           <motion.div 
             key="long-distance"
@@ -1610,14 +1640,14 @@ export default function App() {
             exit={{ opacity: 0, x: -20 }}
             className="flex-1 bg-natural-bg overflow-y-auto"
           >
-            <div className="sticky top-0 z-10 bg-natural-bg/90 backdrop-blur-md px-6 py-6 flex items-center gap-4 border-b border-natural-border mb-8">
+            <div className="sticky top-0 z-10 bg-natural-bg/90 backdrop-blur-md px-6 py-4 flex items-center gap-4 border-b border-natural-border mb-6">
               <button 
                 onClick={navigateBack}
                 className="p-2 hover:bg-natural-sidebar rounded-full transition-colors border border-transparent hover:border-natural-border"
               >
                 <ChevronLeft className="w-6 h-6 text-natural-primary" />
               </button>
-              <h1 className="text-2xl font-bold text-natural-primary font-serif">{t.travelCalculator}</h1>
+              <h2 className="text-xl font-bold text-natural-primary font-serif">{t.highwayRates}</h2>
             </div>
 
             <div className="px-8 pb-24">
@@ -1630,7 +1660,7 @@ export default function App() {
                     className="w-full pt-8 pb-4 px-5 bg-white border border-natural-border rounded-2xl outline-none focus:ring-2 focus:ring-natural-primary/20 focus:border-natural-primary transition-all appearance-none cursor-pointer card-shadow font-bold text-natural-primary"
                   >
                     <option value="">{t.chooseOrigin}</option>
-                    {Object.keys(shortData).map(c => <option key={c} value={c}>{c}</option>)}
+                    {allCities.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
 
@@ -1648,7 +1678,7 @@ export default function App() {
                     className="w-full pt-8 pb-4 px-5 bg-white border border-natural-border rounded-2xl outline-none focus:ring-2 focus:ring-natural-primary/20 focus:border-natural-primary transition-all appearance-none cursor-pointer card-shadow font-bold text-natural-primary"
                   >
                     <option value="">{t.chooseDestination}</option>
-                    {Object.keys(shortData).map(c => <option key={c} value={c}>{c}</option>)}
+                    {allCities.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
@@ -1706,12 +1736,21 @@ export default function App() {
                               </div>
                             </div>
 
-                            <div className="flex flex-col items-center sm:items-end sm:min-w-[120px]">
-                              <div className="text-4xl font-bold text-natural-primary flex items-baseline font-serif">
-                                <span className="text-lg font-bold mr-1 opacity-40">Rs.</span>
-                                {route.fare}
+                            <div className="flex flex-col gap-3 flex-1 sm:flex-initial">
+                              <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
+                                <div className="flex flex-col items-center bg-natural-sidebar p-2 rounded-xl border border-natural-border">
+                                  <span className="text-[8px] font-black uppercase text-gray-400">Normal</span>
+                                  <span className="text-sm font-bold text-natural-primary">Rs.{route.fares.normal}</span>
+                                </div>
+                                <div className="flex flex-col items-center bg-blue-50 p-2 rounded-xl border border-blue-100">
+                                  <span className="text-[8px] font-black uppercase text-blue-400">AC</span>
+                                  <span className="text-sm font-bold text-blue-700">Rs.{route.fares.ac}</span>
+                                </div>
+                                <div className="flex flex-col items-center bg-natural-accent/10 p-2 rounded-xl border border-natural-accent/20">
+                                  <span className="text-[8px] font-black uppercase text-natural-accent/60">Deluxe</span>
+                                  <span className="text-sm font-bold text-natural-accent">Rs.{route.fares.deluxe}</span>
+                                </div>
                               </div>
-                              <button className="mt-2 text-[9px] font-black text-natural-accent uppercase tracking-widest hover:underline">View Schedule</button>
                             </div>
                           </div>
                         ))}
@@ -1737,13 +1776,12 @@ export default function App() {
     </main>
 
       {/* Persistent Bottom Navigation */}
-      <nav className="shrink-0 bg-white border-t border-natural-border px-2 py-3 flex items-center justify-around z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] h-20">
+      <nav className="shrink-0 bg-white border-t border-natural-border px-4 py-3 flex items-center justify-around z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] h-20">
         {[
           { id: 'HOME', icon: Home, label: 'Home' },
-          { id: 'SHORT_CITY_LIST', icon: MapPin, label: 'Local', activeScreens: ['SHORT_CITY_LIST', 'SHORT_ROUTES'] },
-          { id: 'LONG_DISTANCE', icon: ArrowRightLeft, label: 'Highway' },
+          { id: 'LONG_DISTANCE', icon: ArrowRightLeft, label: 'Fares' },
           { id: 'MAP', icon: MapIcon, label: 'Maps' },
-          { id: 'INFO', icon: Info, label: 'Info', activeScreens: ['INFO', 'LOGIN', 'ADMIN'] }
+          { id: 'INFO', icon: Info, label: 'About', activeScreens: ['INFO', 'LOGIN', 'ADMIN'] }
         ].map((tab) => {
           const isActive = tab.activeScreens 
             ? (tab.activeScreens as string[]).includes(currentScreen)
@@ -1753,26 +1791,26 @@ export default function App() {
             <button
               key={tab.id}
               onClick={() => setCurrentScreen(tab.id as Screen)}
-              className="relative flex flex-col items-center justify-center group flex-1"
+              className="relative flex flex-col items-center justify-center group flex-1 h-12 rounded-2xl transition-all duration-300"
             >
-              <div className="relative p-2 rounded-xl transition-all duration-300">
+              <div className="relative flex flex-col items-center justify-center">
                 {isActive && (
                   <motion.div 
                     layoutId="activeTabGlow"
-                    className="absolute inset-0 bg-natural-sidebar rounded-xl -z-10"
+                    className="absolute inset-0 bg-natural-sidebar rounded-xl -z-10 scale-150"
                     transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                   />
                 )}
                 <tab.icon className={`w-5 h-5 transition-colors ${isActive ? 'text-natural-primary' : 'text-gray-300 group-hover:text-natural-accent'}`} />
+                <span className={`text-[9px] font-bold mt-1 uppercase tracking-tighter transition-all ${isActive ? 'text-natural-primary opacity-100' : 'text-gray-400'}`}>
+                  {tab.label}
+                </span>
               </div>
-              <span className={`text-[9px] font-bold mt-1 uppercase tracking-tighter transition-all ${isActive ? 'text-natural-primary opacity-100' : 'text-gray-400 opacity-60'}`}>
-                {tab.label}
-              </span>
               
               {isActive && (
                 <motion.div 
                   layoutId="activeIndicator"
-                  className="absolute -bottom-3 w-1.5 h-1.5 bg-natural-primary rounded-full"
+                  className="absolute -bottom-2 w-1.5 h-1.5 bg-natural-primary rounded-full"
                   transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 />
               )}

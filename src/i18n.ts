@@ -30,7 +30,9 @@ export const TRANSLATIONS = {
     back: "Back",
     rs: "Rs.",
     originPrompt: "Choose origin...",
-    destinationPrompt: "Choose destination..."
+    destinationPrompt: "Choose destination...",
+    highwayRates: "Highway Rates",
+    localRates: "Local Rates"
   },
   NP: {
     title: "भाडा साथी",
@@ -58,7 +60,9 @@ export const TRANSLATIONS = {
     back: "पछाडि",
     rs: "रु.",
     originPrompt: "प्रस्थान रोज्नुहोस्...",
-    destinationPrompt: "गन्तव्य रोज्नुहोस्..."
+    destinationPrompt: "गन्तव्य रोज्नुहोस्...",
+    highwayRates: "राजमार्ग दरहरू",
+    localRates: "स्थानीय दरहरू"
   }
 };
 

@@ -6,21 +6,33 @@
 export interface FareRoute {
   from: string;
   to: string;
-  fare: number;
-  operator?: string;
+  fares: {
+    normal: number;
+    ac: number;
+    deluxe: number;
+  };
+  suggestedYatayat?: string;
   vehicleType?: string;
-  serviceType?: 'Normal' | 'Delux' | 'AC';
 }
 
 export interface ShortDistanceData {
   [city: string]: FareRoute[];
 }
 
-export interface LongDistanceFare {
+export interface LocalRoute {
   from: string;
   to: string;
   fare: number;
-  operator?: string;
+  suggestedYatayat?: string;
   vehicleType?: string;
-  serviceType?: 'Normal' | 'Delux' | 'AC';
+}
+
+export type AppRoute = FareRoute | LocalRoute;
+
+export interface TravelUpdate {
+  id: string;
+  date?: string;
+  title: string;
+  content: string;
+  isNew?: boolean;
 }
